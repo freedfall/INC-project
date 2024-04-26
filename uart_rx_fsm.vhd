@@ -4,19 +4,21 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
+use ieee.numeric_std.all;
 
 -- ----------------------------------------------------------------------------
 --                        Entity declaration
 -- ----------------------------------------------------------------------------
 entity UART_RX_FSM is
     port(
-       CLK : in std_logic; -- clock signal
-       RST : in std_logic; -- asynchronous reset
-       DIN : in std_logic; -- input data
-       CLK_CNT : in std_logic_vector(4 downto 0); -- clock counter
-       BIT_CNT : in std_logic_vector(3 downto 0); -- bit counter
-       CNT_START : in std_logic; -- start counter signal
-       DATA_VALID : out std_logic; -- data valid signal
+       CLK        : in std_logic; -- clock signal
+       RST        : in std_logic; -- asynchronous reset
+       DIN        : in std_logic; -- input data
+       CLK_CNT    : in std_logic_vector(4 downto 0); -- clock counter
+       BIT_CNT    : in std_logic_vector(3 downto 0); -- bit counter
+       CNT_START  : out std_logic; -- signal for starting clock counter
+       RX_START   : out std_logic; -- signal for starting data reading
+       DATA_VALID : out std_logic  -- signal for data validation 
     );
 end entity;
 
@@ -44,12 +46,15 @@ begin
         end if;
     end process fsm_next;
     
-    fsm_logic: process(actual_state, DIN, CLK_CNT, BIT_CNT, CNT_START)
+    fsm_logic: process(actual_state, DIN, CLK_CNT, BIT_CNT)
     begin
         case actual_state is
 
             ------ default processor state ------
             when s_idle =>
+                DATA_VALID <= '0';
+                RX_START   <= '0';  -- Ensure RX_START is reset in idle state
+                CNT_START  <= '0';  -- Ensure CNT_START is reset in idle state
                 if DIN = '0' then
                     following_state <= s_start;
                 else
@@ -59,7 +64,8 @@ begin
             ------ state after DIN = 0 ------
             when s_start =>
                 CNT_START <= '1';
-                if CLK_CNT = "10000"  then
+                RX_START <= '0';
+                if (to_integer(unsigned(CLK_CNT)) = 22)  then
                     following_state <= s_readData;
                 else
                     following_state <= s_start;
@@ -67,6 +73,7 @@ begin
 
             ------ state for reading input data (8bit) ------
             when s_readData =>
+                RX_START <= '1';
                 if BIT_CNT = "1000" then
                     following_state <= s_stop;
                 else
@@ -75,6 +82,7 @@ begin
             
             ------ state after reading data ------
             when s_stop =>
+                RX_START <= '0';
                 if DIN = '1' then
                     following_state <= s_validate;
                 else
@@ -84,6 +92,7 @@ begin
             ------ state for validating data ------
             when s_validate =>
                 DATA_VALID <= '1';
+                CNT_START <= '0';
                 following_state <= s_idle;
             
             ------ default case ------
